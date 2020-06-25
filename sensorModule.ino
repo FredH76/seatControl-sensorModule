@@ -4,15 +4,31 @@
 //    otherwise you shoudh use SoftwareSerial.h + update begin() method accrodingly
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <EEPROM.h>
+#include <SPI.h>
+#include <Wire.h>
+#include "logo.h"
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "esp_system.h"
 #include "BluetoothSerial.h"
+#include <EEPROM.h>
+
+// OLED configuration
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // define the number of bytes to use
 #define EEPROM_SIZE 32
 
+
+////////////////////////////////////   APP CONSTANT and ENUM   /////////////////////////////////
 const int SR04T_DISCONNECTED = -1; // UltraSonar Sensor disconnected
 enum SIDE
-{ // use bit identification
+{ // use bit identification (up to 128)
   LEFT = 1,
   FRONT = 2,
   RIGHT = 4
@@ -79,6 +95,12 @@ void setup()
   // LED OFF
   digitalWrite(led, HIGH);
 
+  // overwrite default SDA, SLC configuration to fit ESP 32
+  Wire.begin(5, 4); // SDA, SLC
+  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  // display welcoming animation
+  splashScreen();
 
   // start Serial for debbuging
   Serial.begin(9600);
@@ -336,3 +358,17 @@ unsigned int getDistBySerial_1(){
   return distanceMM;  
   }
   */
+ 
+void splashScreen(){
+
+  for(int i = 0; i<96; i=i+2){
+
+    display.clearDisplay(); // Clear the display buffer
+    display.drawBitmap(-64 + i, 3, image_data_fauteuil, 58, 58, WHITE);
+    display.drawBitmap(124 - i, 3, image_data_cadre, 58, 58, WHITE);
+    display.display(); // Update screen with each newly-drawn line
+    delay(10);
+
+  }
+
+}
