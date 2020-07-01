@@ -6,7 +6,7 @@
 
 #include <SPI.h>
 #include <Wire.h>
-#include "logo.h"
+//#include "logo.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "esp_system.h"
@@ -120,11 +120,11 @@ void setup()
   EEPROM.begin(EEPROM_SIZE);
 
   // LOAD TEST DATA into EEPROM //
-  EEPROM.write(eeAdr_sensorFlags, LEFT );
-  EEPROM.write(eeAdr_left_Threshold, 30);
-  EEPROM.write(eeAdr_frontL_Threshold, 30);
-  EEPROM.write(eeAdr_frontR_Threshold, 30);
-  EEPROM.write(eeAdr_right_Threshold, 30);
+  EEPROM.write(eeAdr_sensorFlags, LEFT | FRONT_L | FRONT_R | RIGHT);
+  EEPROM.write(eeAdr_left_Threshold, 40);
+  EEPROM.write(eeAdr_frontL_Threshold, 40);
+  EEPROM.write(eeAdr_frontR_Threshold, 40);
+  EEPROM.write(eeAdr_right_Threshold, 40);
   EEPROM.commit();
 
   // load CONFIGURATION from EEPROM storage :
@@ -196,23 +196,18 @@ void loop()
   if (sensorFlags & LEFT)
   {
     res = getDistByTrig(trigLEFT, echoLEFT);
-    if (res > 0 && res < left_Threshold){
-      Serial.print("obstacle LEFT : ");
-    Serial.print(((float)res) / 10);
-      Serial.print("cm. Limit = ");     
-      Serial.println(left_Threshold);      
+    if (res > 0 && res < left_Threshold){     
+      Serial.println("obstacle LEFT");
       emergencyProcedure();
     } 
   }
   
-  /* read FRONT LEFT SENSOR
+  // read FRONT LEFT SENSOR
   if(sensorFlags & FRONT_L)
   {
     res = getDistByTrig(trigFRONT_L, echoFRONT_L);
     if(res > 0 && res < frontL_Threshold){
-      Serial.print("obstacle FRONT LEFT : ");
-      Serial.print(res);
-      Serial.println("cm");
+      Serial.println("obstacle FRONT LEFT");
       emergencyProcedure();
     } 
   }
@@ -233,7 +228,7 @@ void loop()
       Serial.println("obstacle RIGHT");
       emergencyProcedure();
     } 
-  }*/
+  }
 }
 
 /***********************************************************************************************
@@ -244,11 +239,9 @@ void emergencyProcedure()
   // for TEST : buzz 3 times
   for (int i = 0; i < 1; i++)
   {
-    tone(buzzerPlus, buzzFreq, 100);
     digitalWrite(led, LOW);
-    delay(200);
+    tone(buzzerPlus, buzzFreq, 100);
     digitalWrite(led, HIGH);
-    delay(200);
   }
 };
 
@@ -320,80 +313,21 @@ int getDistByTrig(int trigPin, int echoPin)
   digitalWrite(trigPin, LOW); // 0- clear trigPin
   delayMicroseconds(5);
   digitalWrite(trigPin, HIGH); // 1- rise UP
-  delayMicroseconds(50);       // 2- pulse width
+  delayMicroseconds(10);       // 2- pulse width
   digitalWrite(trigPin, LOW);  // 3- rise down
 
   // Get echo
   unsigned long period;
-  period = pulseIn(echoPin, HIGH);
+  period = pulseIn(echoPin, HIGH, 10000); // max distance = 2M
 
-  // patch for SR04T
-  if (period > 20000 || period == 0)
-    return SR04T_DISCONNECTED;
-
-  //delay(30); // wait for signal to come back
-  return (period * 343 / 2000);
+  return (period * 343 / 2000); // return distance in mm
 }
 
-/***********************************************************************************************
- * READ DISTANCE BY SERIAL_X
-***********************************************************************************************
-unsigned int getDistBySerial_1(){
-  unsigned long distanceMM;
-  unsigned long startingTime;
-  unsigned long timeout = 1000;
-  bool runLoop = true;
-
-  // send command to start measurement
-  Serial1.write(0x55);
-  
-  // wait for measure
-  startingTime = millis(); // initialize timeout 
-  while (Serial1.available()<=0 && runLoop){
-    runLoop = ((millis() - startingTime) < timeout); 
-  };
-  if(runLoop == false){
-    Serial.println("ERROR: no answer from ultrasonar module");
-    return 0;
-  }
-  
-  // check if frame start with proper code (0xFF)
-  btByte = Serial1.read();
-  if(btByte != 0xFF){
-    Serial.print("ERROR: frame do not start with proper code. received : 0x");
-    Serial.println(btByte,HEX);
-    return 0;   
-  }
-
-  // read distance
-  int H_DATA = Serial1.read(); // H_DATA
-  int L_DATA = Serial1.read(); // L_DATA
-  distanceMM = (H_DATA << 8) + L_DATA;
-
-  // check validity
-  if (distanceMM <=0 || distanceMM > 6000){
-     Serial.print("ERROR: out of range value : ");
-     Serial.print(distanceMM);
-     Serial.print(" H_DATA=Ox"); Serial.print(H_DATA,HEX);
-     Serial.print(" L_DATA=Ox"); Serial.print(L_DATA,HEX);
-     return 0;
-  }
-
-  // clear serial
-  while (Serial1.available()>0) Serial1.read();
-  
-  return distanceMM;  
-  }
-  */
-
-///////////////////////////////////      TOOL   BOX            /////////////////////////////////
-
+///////////////////////////////////            TOOL BOX             /////////////////////////////////
 void splashScreen()
 {
-
   for (int i = 0; i < 96; i = i + 2)
   {
-
     display.clearDisplay(); // Clear the display buffer
     display.drawBitmap(-64 + i, 3, image_data_fauteuil, 58, 58, WHITE);
     display.drawBitmap(124 - i, 3, image_data_cadre, 58, 58, WHITE);
