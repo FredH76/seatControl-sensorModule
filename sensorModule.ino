@@ -130,9 +130,6 @@ void setup()
   // load CONFIGURATION from EEPROM storage :
   loadEEPROMconf();
 
-  // test buzzer
-  testUSsensor();
-
   // initBarGraphMode
   initBarGraphMode();
 }
@@ -237,7 +234,7 @@ void loop()
 ***********************************************************************************************/
 void emergencyProcedure()
 {
-  // for TEST : buzz 3 times
+  // for TEST : buzz x times
   for (int i = 0; i < 1; i++)
   {
     digitalWrite(led, LOW);
@@ -247,63 +244,6 @@ void emergencyProcedure()
 };
 
 ///////////////////////////////////    ULTRA SONIC FUNCTIONS   /////////////////////////////////
-/***********************************************************************************************
- * TEST US SENSOR
-***********************************************************************************************/
-int testUSsensor()
-{
-  int res;
-
-  Serial.println("_________________ test SENSOR ____________________________");
-
-  res = getDistByTrig(trigLEFT, echoLEFT);
-  if (res > 0)
-  {
-    Serial.print("SUCCESS: LEFT  ultra sonar measure = ");
-    Serial.print(((float)res) / 10);
-    Serial.println(" cm");
-  }
-  else if (res == SR04T_DISCONNECTED)
-    Serial.println("ERROR: LEFT Ultra sonar SENSOR is not connected");
-  else
-    Serial.println("ERROR: LEFT Ultra sonar NULL measure");
-
-  res = getDistByTrig(trigFRONT_L, echoFRONT_L);
-  if (res > 0)
-  {
-    Serial.print("SUCCESS: FRONT LEFT ultra sonar measure = ");
-    Serial.print(((float)res) / 10);
-    Serial.println(" cm");
-  }
-  else if (res == SR04T_DISCONNECTED)
-    Serial.println("ERROR: FRONT LEFT Ultra sonar SENSOR is not connected");
-  else
-    Serial.println("ERROR: FRONT LEFT Ultra sonar NULL measure");
-
-  res = getDistByTrig(trigFRONT_R, echoFRONT_R);
-  if (res > 0)
-  {
-    Serial.print("SUCCESS: FRONT RIGHT ultra sonar measure = ");
-    Serial.print(((float)res) / 10);
-    Serial.println(" cm");
-  }
-  else if (res == SR04T_DISCONNECTED)
-    Serial.println("ERROR: FRONT RIGHT Ultra sonar SENSOR is not connected");
-  else
-    Serial.println("ERROR: FRONT RIGHT Ultra sonar NULL measure");
-
-  res = getDistByTrig(trigRIGHT, echoRIGHT);
-  if (res > 0)
-  {
-    Serial.print("SUCCESS: RIGHT ultra sonar measure = ");
-    Serial.print(((float)res) / 10);
-    Serial.println(" cm");
-  }
-  else if (res == SR04T_DISCONNECTED)
-    Serial.println("ERROR: RIGHT Ultra sonar SENSOR is not connected");
-  else
-    Serial.println("ERROR: RIGHT Ultra sonar NULL measure");
-}
 
 /***********************************************************************************************
  * READ DISTANCE BY TRIG
@@ -319,14 +259,14 @@ int getDistByTrig(int trigPin, int echoPin)
 
   // Get echo
   unsigned long period;
-  period = pulseIn(echoPin, HIGH, 10000); // max distance = 1M
+  period = pulseIn(echoPin, HIGH, 6000); // max distance = 1M
 
   return (period * 343 / 2000); // return distance in mm
 }
 
 ////////////////////////////////        OLED FUNCTIONS          ////////////////////////////////
 /***********************************************************************************************
- * DISPLAY WHELLCHAIR ANIMATION
+ * DISPLAY WHEELCHAIR ANIMATION
 ***********************************************************************************************/
 void splashScreen()
 {
@@ -354,16 +294,16 @@ void initBarGraphMode()
 /***********************************************************************************************
  * DISPLAY COLUMN BAR
 ***********************************************************************************************/
-void drawColumnBar(int col, int dist, int treshold)
+void drawColumnBar(int col, int dist, int threshold)
 {
   //clear previous data
   display.fillRect(X_BAR_BASE + 1, col * 16, 127, 16, BLACK);
   //draw bar
   if(dist > 0) display.fillRect(dist / 10 + X_BAR_BASE, col * 16, 127, 16, WHITE);
-  //draw treshold
-  int tresholdColor = WHITE;
-  (dist > 0 && dist < treshold) ? tresholdColor = BLACK : tresholdColor = WHITE;
-  display.drawLine(X_BAR_BASE + treshold / 10, col * 16, X_BAR_BASE + treshold / 10, (col + 1) * 16, tresholdColor);
+  //draw threshold
+  int thresholdColor = WHITE;
+  (dist > 0 && dist < threshold) ? thresholdColor = BLACK : thresholdColor = WHITE;
+  display.drawLine(X_BAR_BASE + threshold / 10, col * 16, X_BAR_BASE + threshold / 10, (col + 1) * 16, thresholdColor);
   display.display();
 }
 
