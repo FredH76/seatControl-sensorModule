@@ -71,7 +71,7 @@ BluetoothSerial btSerial;
 //  GENERAL
 int eeVal;             // value read in EEPROM
 int stopDuration;      // time before releasing control to joystick (in ms)
-int sensorFlags = 256; // LEFT < FRONT_L < FRONT_R < RIGHT < ...
+int sensorFlags = 255 ; // LEFT < FRONT_L < FRONT_R < RIGHT < ...
 int left_Threshold;
 int frontL_Threshold;
 int frontR_Threshold;
@@ -120,7 +120,7 @@ void setup()
   EEPROM.begin(EEPROM_SIZE);
 
   // LOAD TEST DATA into EEPROM //
-  EEPROM.write(eeAdr_sensorFlags, LEFT | FRONT_L | FRONT_R | RIGHT);
+  EEPROM.write(eeAdr_sensorFlags, FRONT_R ); // LEFT | FRONT_L | FRONT_R | RIGHT
   EEPROM.write(eeAdr_left_Threshold, 40);
   EEPROM.write(eeAdr_frontL_Threshold, 40);
   EEPROM.write(eeAdr_frontR_Threshold, 40);
@@ -128,27 +128,13 @@ void setup()
   EEPROM.commit();
 
   // load CONFIGURATION from EEPROM storage :
-  // load Stop duration from EEPROM (default 3sec)
-  eeVal = EEPROM.read(eeAdr_stopDuration);
-  (eeVal < 0 || eeVal > 10) ? stopDuration = 3000 : stopDuration = eeVal * 1000;
-  // load Sensor Flag Configuration (default 8 sensors activated <=> 255)
-  eeVal = EEPROM.read(eeAdr_sensorFlags);
-  (eeVal < 0 || eeVal > 255) ? sensorFlags = 255 : sensorFlags = eeVal;
-  // load LEFT threshold from EEPROM (default 50cmm)
-  eeVal = EEPROM.read(eeAdr_left_Threshold);
-  (eeVal < 15 || eeVal > 200) ? left_Threshold = 500 : left_Threshold = eeVal * 10;
-  // load FRONT_L threshold from EEPROM (default 50cmm)
-  eeVal = EEPROM.read(eeAdr_frontL_Threshold);
-  (eeVal < 15 || eeVal > 200) ? frontL_Threshold = 500 : frontL_Threshold = eeVal * 10;
-  // load FRONT_R threshold from EEPROM (default 50cmm)
-  eeVal = EEPROM.read(eeAdr_frontR_Threshold);
-  (eeVal < 15 || eeVal > 200) ? frontR_Threshold = 500 : frontR_Threshold = eeVal * 10;
-  // load RIGHT threshold from EEPROM (default 50cmm)
-  eeVal = EEPROM.read(eeAdr_right_Threshold);
-  (eeVal < 15 || eeVal > 200) ? right_Threshold = 500 : right_Threshold = eeVal * 10;
-
-  // test buzzer and relay
+  loadEEPROMconf();
+ 
+  // test buzzer 
   testUSsensor();
+
+  // initBarGraphMode
+  initBarGraphMode();
 }
 
 /***********************************************************************************************
@@ -215,8 +201,16 @@ void loop()
   // read FRONT RIGHT SENSOR
   if(sensorFlags & FRONT_R){
     res = getDistByTrig(trigFRONT_R,echoFRONT_R);
+
+    Serial.print("distance = ");
+    Serial.print(res/10);
+    Serial.println(" cm");
+
+    updateBarGraph(2, res, frontR_Threshold); 
+
+
     if(res > 0 && res < frontR_Threshold){
-      Serial.println("obstacle FRONT RIGHT");
+      //Serial.println("obstacle FRONT RIGHT");
       emergencyProcedure();
     } 
   }
@@ -318,22 +312,74 @@ int getDistByTrig(int trigPin, int echoPin)
 
   // Get echo
   unsigned long period;
-  period = pulseIn(echoPin, HIGH, 10000); // max distance = 2M
+  period = pulseIn(echoPin, HIGH, 20000); // max distance = 2M
 
   return (period * 343 / 2000); // return distance in mm
 }
 
-///////////////////////////////////            TOOL BOX             /////////////////////////////////
+////////////////////////////////        OLED FUNCTIONS          ////////////////////////////////
+/***********************************************************************************************
+ * DISPLAY WHELLCHAIR ANIMATION
+***********************************************************************************************/
 void splashScreen()
 {
   for (int i = 0; i < 96; i = i + 2)
   {
     display.clearDisplay(); // Clear the display buffer
-    display.drawBitmap(-64 + i, 3, image_data_fauteuil, 58, 58, WHITE);
+    display.drawBitmap(-64 + i, 3, image_data_fauteuil_down, 58, 58, WHITE);
     display.drawBitmap(124 - i, 3, image_data_cadre, 58, 58, WHITE);
     display.display(); // Update screen with each newly-drawn line
     delay(10);
   }
+}
+
+/***********************************************************************************************
+ * INIT BAR GRAPH DISPLAY
+***********************************************************************************************/
+#define X_BAR_BASE 27
+void initBarGraphMode(){
+  display.clearDisplay(); // Clear the display buffer
+  // TODO : insert title text "sonar mode"
+  display.drawLine(X_BAR_BASE, 0, X_BAR_BASE, 63, WHITE);// draw baseline
+}
+
+/***********************************************************************************************
+ * DISPLAY COLUMN BAR
+***********************************************************************************************/
+void updateBarGraph(int col, int dist, int treshold){
+  //clear previous data
+  display.fillRect(X_BAR_BASE+1, col*16, 127, 16, BLACK); 
+  //draw bar
+  display.fillRect(dist/10+X_BAR_BASE, col*16, 127, 16, WHITE); 
+  //draw treshold
+  int tresholdColor = WHITE;
+  ( dist < treshold ) ? tresholdColor = BLACK : tresholdColor = WHITE; 
+  display.drawLine(X_BAR_BASE+treshold/10, col*16, X_BAR_BASE+treshold/10, (col+1)*16, tresholdColor); 
+  display.display(); 
+}
+
+
+////////////////////////////////       TOOL BOX FUNCTIONS        ///////////////////////////////
+
+void loadEEPROMconf(){
+  // load Stop duration from EEPROM (default 3sec)
+  eeVal = EEPROM.read(eeAdr_stopDuration);
+  (eeVal < 0 || eeVal > 10) ? stopDuration = 3000 : stopDuration = eeVal * 1000;
+  // load Sensor Flag Configuration (default 8 sensors activated <=> 255)
+  eeVal = EEPROM.read(eeAdr_sensorFlags);
+  (eeVal < 0 || eeVal > 255) ? sensorFlags = 255 : sensorFlags = eeVal;
+  // load LEFT threshold from EEPROM (default 50cmm)
+  eeVal = EEPROM.read(eeAdr_left_Threshold);
+  (eeVal < 15 || eeVal > 200) ? left_Threshold = 500 : left_Threshold = eeVal * 10;
+  // load FRONT_L threshold from EEPROM (default 50cmm)
+  eeVal = EEPROM.read(eeAdr_frontL_Threshold);
+  (eeVal < 15 || eeVal > 200) ? frontL_Threshold = 500 : frontL_Threshold = eeVal * 10;
+  // load FRONT_R threshold from EEPROM (default 50cmm)
+  eeVal = EEPROM.read(eeAdr_frontR_Threshold);
+  (eeVal < 15 || eeVal > 200) ? frontR_Threshold = 500 : frontR_Threshold = eeVal * 10;
+  // load RIGHT threshold from EEPROM (default 50cmm)
+  eeVal = EEPROM.read(eeAdr_right_Threshold);
+  (eeVal < 15 || eeVal > 200) ? right_Threshold = 500 : right_Threshold = eeVal * 10;
 }
 
 void tone(byte pin, int freq, int duration)
