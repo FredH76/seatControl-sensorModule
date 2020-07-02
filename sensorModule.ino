@@ -287,8 +287,17 @@ void splashScreen()
 void initBarGraphMode()
 {
   display.clearDisplay(); // Clear the display buffer
-  // TODO : insert title text "sonar mode"
-  display.drawLine(X_BAR_BASE, 0, X_BAR_BASE, 63, WHITE); // draw baseline
+
+  // insert title text "sonar mode"
+  display.setRotation(3);
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println("detection obstacles en cours...");
+  display.setRotation(0);
+
+  // draw baseline (Zero Ref for X Distance)
+  // display.drawLine(X_BAR_BASE, 0, X_BAR_BASE, 63, WHITE); 
 }
 
 /***********************************************************************************************
@@ -299,7 +308,8 @@ void drawColumnBar(int col, int dist, int threshold)
   //clear previous data
   display.fillRect(X_BAR_BASE + 1, col * 16, 127, 16, BLACK);
   //draw bar
-  if(dist > 0) display.fillRect(dist / 10 + X_BAR_BASE, col * 16, 127, 16, WHITE);
+  if (dist > 0)
+    display.fillRect(dist / 10 + X_BAR_BASE, col * 16, 127, 16, WHITE);
   //draw threshold
   int thresholdColor = WHITE;
   (dist > 0 && dist < threshold) ? thresholdColor = BLACK : thresholdColor = WHITE;
