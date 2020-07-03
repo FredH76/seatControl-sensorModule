@@ -10,8 +10,19 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "esp_system.h"
-#include "BluetoothSerial.h"
+//#include "BluetoothSerial.h"
+#include "BLEDevice.h"
 #include <EEPROM.h>
+
+// BLE configuration
+static BLEUUID SERVICE_UUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"); // UART service UUID
+static BLEUUID CHARACTERISTIC_UUID_RX("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
+static BLEUUID CHARACTERISTIC_UUID_TX("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
+static boolean joystickFound = false;
+static boolean joystickConnected = false;
+static BLERemoteCharacteristic *pRX_Characteristic;
+static BLERemoteCharacteristic *pTX_Characteristic;
+static BLEAdvertisedDevice *joystickDevice;
 
 // OLED configuration
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -65,9 +76,6 @@ int eeAdr_frontL_Threshold = 11;
 int eeAdr_frontR_Threshold = 12;
 int eeAdr_right_Threshold = 13;
 
-//  BLUETOOTH SERIAL
-BluetoothSerial btSerial;
-
 //  GENERAL
 int eeVal;             // value read in EEPROM
 int stopDuration;      // time before releasing control to joystick (in ms)
@@ -84,6 +92,9 @@ int btByte;   // store byte to be read from BLE serial
 ***********************************************************************************************/
 void setup()
 {
+  // start Serial for debbuging
+  Serial.begin(9600);
+
   // configure pin INPUT/OUTPUT
   pinMode(trigLEFT, OUTPUT);
   pinMode(echoLEFT, INPUT);
@@ -106,12 +117,9 @@ void setup()
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   splashScreen(); // display welcoming animation
 
-  // start Serial for debbuging
-  Serial.begin(9600);
-
-  // init BLUETOOTH
-  Serial.println(F("Initializing BlueTooth ..."));
-  btSerial.begin("WheelChair Sensor");
+  // start Scan for joystick BLE connection
+  Serial.println(F("Scanning for Joystick BLE connection ..."));
+  scanForJoystick();
 
   // set BUZZER Frequence
   buzzFreq = 6000; // frequency (in Hz)
@@ -120,7 +128,7 @@ void setup()
   EEPROM.begin(EEPROM_SIZE);
 
   // LOAD TEST DATA into EEPROM //
-  EEPROM.write(eeAdr_sensorFlags, LEFT | FRONT_L | FRONT_R | RIGHT); // LEFT | FRONT_L | FRONT_R | RIGHT
+  EEPROM.write(eeAdr_sensorFlags, 0); // LEFT | FRONT_L | FRONT_R | RIGHT
   EEPROM.write(eeAdr_left_Threshold, 30);
   EEPROM.write(eeAdr_frontL_Threshold, 30);
   EEPROM.write(eeAdr_frontR_Threshold, 30);
@@ -139,9 +147,23 @@ void setup()
 ***********************************************************************************************/
 void loop()
 {
+
+  if (joystickFound == true && !joystickConnected)
+  {
+    joystickConnected = connectToJoystick();
+    if (joystickConnected)
+    {
+      Serial.println("Sensor module is now connected to the Joystick.");
+    }
+    else
+    {
+      Serial.println("Failed to connect to the Joystick...");
+    }
+  }
+
   int res;
 
-  // read from BLE
+  /* read from BLE
   while (btSerial.available())
   {
     btByte = btSerial.read();
@@ -173,7 +195,7 @@ void loop()
         btSerial.read();
       break;
     }
-  }
+  }*/
 
   // read LEFT SENSOR
   if (sensorFlags & LEFT)
@@ -204,10 +226,9 @@ void loop()
   if (sensorFlags & FRONT_R)
   {
     res = getDistByTrig(trigFRONT_R, echoFRONT_R);
-    Serial.print("distance = ");
+    /*Serial.print("distance = ");
     Serial.print(res / 10);
-    Serial.println(" cm");
-
+    Serial.println(" cm");*/
     drawColumnBar(2, res, frontR_Threshold);
     if (res > 0 && res < frontR_Threshold)
     {
@@ -241,7 +262,60 @@ void emergencyProcedure()
     tone(buzzerPlus, buzzFreq, 100);
     digitalWrite(led, HIGH);
   }
+
+  if (joystickConnected)
+  {
+    // Set the characteristic's value to be the array of bytes that is actually a string.
+    pRX_Characteristic->writeValue(0x0E);
+  }
 };
+
+///////////////////////////////////       BLE FUNCTIONS        /////////////////////////////////
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
+{
+
+  // Called for each BLE Advertised Device found.
+  void onResult(BLEAdvertisedDevice advertisedDevice)
+  {
+    Serial.print("BLE Advertised Device found: ");
+    Serial.println(advertisedDevice.toString().c_str());
+
+    // if the device is the joystickDevice => stop scan
+    // if (advertisedDevice.getName() == "BLE Joystick")
+    if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(SERVICE_UUID))
+    {
+      BLEDevice::getScan()->stop();
+      joystickDevice = new BLEAdvertisedDevice(advertisedDevice);
+      joystickFound = true;
+    }
+  }
+};
+
+/***********************************************************************************************
+ * Scan for BLE devices and select joystickDevice (if any).
+***********************************************************************************************/
+void scanForJoystick()
+{
+  BLEDevice::init("");
+  // Retrieve a Scanner and set the callback we want to use to be informed when we
+  // have detected a new device.  Specify that we want active scanning and start the
+  // scan to run for 5 seconds.
+  BLEScan *pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  //pBLEScan->setInterval(1349);
+  //pBLEScan->setWindow(449);
+  pBLEScan->setActiveScan(true);
+  pBLEScan->start(5, false);
+}
+
+/***********************************************************************************************
+ * Connect to Jostick
+***********************************************************************************************/
+boolean connectToJoystick()
+{
+
+  return true;
+}
 
 ///////////////////////////////////    ULTRA SONIC FUNCTIONS   /////////////////////////////////
 
@@ -297,7 +371,8 @@ void initBarGraphMode()
   display.setRotation(0);
 
   // draw baseline (Zero Ref for X Distance)
-  // display.drawLine(X_BAR_BASE, 0, X_BAR_BASE, 63, WHITE); 
+  // display.drawLine(X_BAR_BASE, 0, X_BAR_BASE, 63, WHITE);
+  display.display();
 }
 
 /***********************************************************************************************
