@@ -11,18 +11,21 @@
 #include <Adafruit_SSD1306.h>
 #include "esp_system.h"
 //#include "BluetoothSerial.h"
-#include "BLEDevice.h"
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include <EEPROM.h>
 
 // BLE configuration
 static BLEUUID SERVICE_UUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"); // UART service UUID
 static BLEUUID CHARACTERISTIC_UUID_RX("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
 static BLEUUID CHARACTERISTIC_UUID_TX("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
-static boolean joystickFound = false;
-static boolean joystickConnected = false;
-static BLERemoteCharacteristic *pRX_Characteristic;
-static BLERemoteCharacteristic *pTX_Characteristic;
-static BLEAdvertisedDevice *joystickDevice;
+BLEServer *pServer = NULL;
+BLECharacteristic *pTxCharacteristic;
+BLECharacteristic *pRxCharacteristic;
+uint8_t txValue = 0;
+boolean joystickConnected = false;
 
 // OLED configuration
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -108,7 +111,7 @@ void setup()
   pinMode(buzzerPlus, OUTPUT);
   pinMode(buzzerGround, OUTPUT);
   pinMode(led, OUTPUT);
-
+ 
   // LED OFF
   digitalWrite(led, HIGH);
 
@@ -118,8 +121,8 @@ void setup()
   splashScreen(); // display welcoming animation
 
   // start Scan for joystick BLE connection
-  Serial.println(F("Scanning for Joystick BLE connection ..."));
-  scanForJoystick();
+  Serial.println(F("initialize BLE connection ..."));
+  initBLE();
 
   // set BUZZER Frequence
   buzzFreq = 6000; // frequency (in Hz)
@@ -128,7 +131,7 @@ void setup()
   EEPROM.begin(EEPROM_SIZE);
 
   // LOAD TEST DATA into EEPROM //
-  EEPROM.write(eeAdr_sensorFlags, 0); // LEFT | FRONT_L | FRONT_R | RIGHT
+  EEPROM.write(eeAdr_sensorFlags, LEFT | FRONT_L | FRONT_R | RIGHT); // LEFT | FRONT_L | FRONT_R | RIGHT
   EEPROM.write(eeAdr_left_Threshold, 30);
   EEPROM.write(eeAdr_frontL_Threshold, 30);
   EEPROM.write(eeAdr_frontR_Threshold, 30);
@@ -147,55 +150,7 @@ void setup()
 ***********************************************************************************************/
 void loop()
 {
-
-  if (joystickFound == true && !joystickConnected)
-  {
-    joystickConnected = connectToJoystick();
-    if (joystickConnected)
-    {
-      Serial.println("Sensor module is now connected to the Joystick.");
-    }
-    else
-    {
-      Serial.println("Failed to connect to the Joystick...");
-    }
-  }
-
   int res;
-
-  /* read from BLE
-  while (btSerial.available())
-  {
-    btByte = btSerial.read();
-    delay(3);
-    Serial.print(F("received : Ox"));
-    Serial.println(btByte);
-
-    switch (btByte)
-    {
-    case CONFIG_STOP_DURATION:
-      // get stop duration from BLE
-      btByte = btSerial.read();
-      Serial.print(F("received : Ox"));
-      Serial.println(btByte); //check if value is in range 1 to 10
-      if (btByte < 0 || btByte > 10)
-        btByte = 3;
-      //save new value in EEPROM
-      EEPROM.write(eeAdr_stopDuration, btByte);
-      EEPROM.commit();
-      // update local stopDuration (and convert into millis)
-      stopDuration = btByte * 1000;
-      break;
-
-    case EMERGENCY_STOP:
-      // launch emergency procedure
-      emergencyProcedure();
-      // clear input buffer
-      while (btSerial.available())
-        btSerial.read();
-      break;
-    }
-  }*/
 
   // read LEFT SENSOR
   if (sensorFlags & LEFT)
@@ -265,13 +220,15 @@ void emergencyProcedure()
 
   if (joystickConnected)
   {
-    // Set the characteristic's value to be the array of bytes that is actually a string.
-    pRX_Characteristic->writeValue(0x0E);
+    // Notify emergnecy to joystick.
+    txValue = 0xE0;
+    pTxCharacteristic->setValue(&txValue,1);
+    pTxCharacteristic->notify();
   }
 };
 
 ///////////////////////////////////       BLE FUNCTIONS        /////////////////////////////////
-class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
+/*class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
 {
 
   // Called for each BLE Advertised Device found.
@@ -293,7 +250,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
 
 /***********************************************************************************************
  * Scan for BLE devices and select joystickDevice (if any).
-***********************************************************************************************/
+***********************************************************************************************
 void scanForJoystick()
 {
   BLEDevice::init("");
@@ -306,15 +263,107 @@ void scanForJoystick()
   //pBLEScan->setWindow(449);
   pBLEScan->setActiveScan(true);
   pBLEScan->start(5, false);
-}
+}*/
 
 /***********************************************************************************************
- * Connect to Jostick
+ *  BLE callbacks
 ***********************************************************************************************/
-boolean connectToJoystick()
+class MyServerCallbacks : public BLEServerCallbacks
 {
+  void onConnect(BLEServer *pServer)
+  {
+    joystickConnected = true;
+  };
 
-  return true;
+  void onDisconnect(BLEServer *pServer)
+  {
+    joystickConnected = false;
+  }
+};
+
+class MyRxCallbacks : public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *pCharacteristic)
+  {
+    std::string rxValue = pCharacteristic->getValue();
+
+    if (rxValue.length() > 0)
+    {
+      Serial.println("*********");
+      Serial.print("Received Value: ");
+      for (int i = 0; i < rxValue.length(); i++)
+        Serial.print(rxValue[i]);
+
+      Serial.println();
+      Serial.println("*********");
+    }
+
+    /* read from BLE
+    while (btSerial.available())
+    {
+      btByte = btSerial.read();
+      delay(3);
+      Serial.print(F("received : Ox"));
+      Serial.println(btByte);
+
+      switch (btByte)
+      {
+      case CONFIG_STOP_DURATION:
+        // get stop duration from BLE
+        btByte = btSerial.read();
+        Serial.print(F("received : Ox"));
+        Serial.println(btByte); //check if value is in range 1 to 10
+        if (btByte < 0 || btByte > 10)
+          btByte = 3;
+        //save new value in EEPROM
+        EEPROM.write(eeAdr_stopDuration, btByte);
+        EEPROM.commit();
+        // update local stopDuration (and convert into millis)
+        stopDuration = btByte * 1000;
+        break;
+
+      case EMERGENCY_STOP:
+        // launch emergency procedure
+        emergencyProcedure();
+        // clear input buffer
+        while (btSerial.available())
+          btSerial.read();
+        break;
+      }
+    }*/
+  }
+};
+
+/***********************************************************************************************
+ * initialize BLE
+***********************************************************************************************/
+void initBLE()
+{
+  // Create the BLE Device
+  BLEDevice::init("Sensor Module BLE");
+
+  // Create the BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE TX Characteristic
+  pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);
+  pTxCharacteristic->addDescriptor(new BLE2902());
+
+  // Create a BLE RX Characteristic
+  pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+  pRxCharacteristic->setCallbacks(new MyRxCallbacks());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  pServer->getAdvertising()->addServiceUUID(SERVICE_UUID);
+  pServer->getAdvertising()->start();
+  Serial.println("Waiting a client connection to notify...");
 }
 
 ///////////////////////////////////    ULTRA SONIC FUNCTIONS   /////////////////////////////////
